@@ -1,0 +1,135 @@
+#tkinter stuff
+from tkinter import *
+from tkinter.ttk import *
+
+from tkinter.simpledialog import askstring
+from tkinter.messagebox import showerror, showinfo, askokcancel
+#end tkinter stuff
+
+#other helpers
+import os,pprint
+#end other helpers
+
+#XPlorer specific
+import file
+#end Xplorer specific
+
+
+def create_containerframe(app):
+    #spacing
+    app.container = Frame(app.appframe, padding=(10))
+    app.container.grid(row=2, column=0)
+    app.container["style"] = "Container.TFrame"
+    #the File and folder containers will be inside the frame
+
+def sortby(file_list, manner, descending=False):
+    #sort files by manner in ascending order (HA!)
+    match manner:
+        case "Name":
+            return sorted(file_list, key=lambda file: file.name, reverse=descending)
+        case "Date Created":
+            return sorted(file_list, key=os.path.getctime, reverse=descending)
+        case "Date Modified":
+            return sorted(file_list, key=os.path.getmtime, reverse=descending)
+        case "Type":
+            #get the file extension if it has one, then sort according
+            #to that
+            return sorted(file_list
+            , key=lambda file: file.name
+                          .split('.')[-1] if '.' in file
+                          .name else '', reverse=descending)
+        case "Size":
+            return sorted(file_list, key=os.path.getsize, reverse=descending)
+
+def refresh(app):
+    file.build_files(app, os.getcwd())
+
+
+class Container:
+    def __init__(self, app, n):
+        self.app = app
+        self.n = n
+        self.frame = Frame(app.container)
+        self.build_parts()
+        self.style()
+        self.event()
+        
+    def build_parts(self):
+        self.frame.grid(column=self.n, row=0, sticky=(N, W))
+        #the plus button (the command will be set)
+        self.add = Button(self.frame, text="+")
+        self.label = Label(self.frame, text="Files" if self.n else "Folders")
+        self.sortby_options = ["Name", "Name", "Date Created", "Date Modified"
+                               ,"Type", "Size"]
+        self.sortby_value = StringVar()
+        self.sortby = OptionMenu(self.frame, self.sortby_value
+                                 , *self.sortby_options)
+        self.descending = BooleanVar()
+        self.reverser = Checkbutton(self.frame, text="Ascending"
+                                    , variable=self.descending)
+        
+    @property
+    def children(self):
+        return self.frame.winfo_children()
+        
+    def style(self):
+        #self.frame["padding"] = (50, 10)
+        self.frame["style"] = "Cont.TFrame"
+        #self.frame["style"] = "PE.TFrame"
+        ch = self.children
+        for part in ch:
+            part.grid(column=ch.index(part), row=0)
+            part["padding"] = (0)
+            part["style"] = "Cont.TButton"
+        self.add["width"] = 4
+        self.label["width"] = 30
+        self.frame["padding"] = (10, 0, 0, 0) if self.n else (0, 0, 10, 0)
+        
+    
+    def __getitem__(self, prop):
+        return getattr(self.frame, prop)
+    
+    def sortation_manner(self):
+        #return tuple of len 2 indicating sortation manner
+        #, to be passed to container.sortby
+        manner = self.sortby_value.get()
+        descending = self.descending.get()
+        return (manner, descending)
+        
+    def event(self):
+        #making anew
+        def add_item(*event):
+            item = "file" if self.n else "folder"
+            Item = item.capitalize()
+            new = askstring(f"New {Item} Creation", f"Enter the name of the {item}")
+            if not new: # user cancelled action
+                return
+            #check for invalid characters in name
+            invalids = ''.join(char for char in new if char in '\/:*?"|<>')
+            #LBYL
+            if os.path.exists(new):
+                showerror(f"{Item} Creation Error", f"{Item} {new} already exists")
+            elif invalids: #check if name is invalid (string should be empty if not)
+                showerror(f"{Item} Creation Error", f"{new} should not contain any of \/:*?\"|<> ")
+            else:
+                #do different things for files and folders
+                #EAFP
+                try:
+                    if self.n: #files
+                        with open(new, 'x'): pass
+                    else: # folders
+                        os.mkdir(new)
+                except PermissionError:
+                    showerror(f"{item.upper()} Creation Error", "Permission Denied!")
+            self.app.refresh()
+        def reverse(*event):
+            if self.descending.get():
+                self.reverser["text"] = "Descending"
+            else:
+                self.reverser["text"] = "Ascending"
+            self.app.refresh()
+        #add the events
+        self.sortby_value.trace('w', lambda *event: self.app.refresh())
+        self.descending.trace('w', reverse)
+        self.add["command"] = add_item
+                    
